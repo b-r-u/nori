@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, Write};
 use std::fs::File;
 use std::path::Path;
 use bincode;
@@ -14,7 +14,7 @@ pub struct Route {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct RouteCollectionHeader {
+pub struct RouteCollectionHeader {
     major_version: u16,
     minor_version: u16,
     osrm_file: String,
@@ -24,7 +24,7 @@ struct RouteCollectionHeader {
 
 pub struct RouteCollectionWriter<W: Write> {
     writer: BufWriter<W>,
-    number_of_routes: u64,
+    header: RouteCollectionHeader,
 }
 
 
@@ -44,24 +44,33 @@ impl RouteCollectionWriter<File> {
 
         Ok(RouteCollectionWriter {
             writer,
-            number_of_routes: 0,
+            header,
         })
     }
 
     pub fn write_route(&mut self, route: Route) -> Result<Route, Box<dyn std::error::Error>> {
         bincode::serialize_into(&mut self.writer, &route)?;
-        self.number_of_routes += 1;
+        self.header.number_of_routes += 1;
         Ok(route)
+    }
+
+    pub fn finish(mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Move to start of file
+        self.writer.seek(std::io::SeekFrom::Start(0))?;
+        // Write header again, but with correct number_of_routes
+        bincode::serialize_into(self.writer, &self.header)?;
+        Ok(())
     }
 }
 
 pub struct RouteCollectionReader<R: Read> {
     reader: BufReader<R>,
     header: RouteCollectionHeader,
+    route_index: u64,
 }
 
 impl RouteCollectionReader<File> {
-    pub fn new<P: AsRef<Path>, S: Into<String>>(path: P) -> Result<RouteCollectionReader<File>, Box<dyn std::error::Error>> {
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<RouteCollectionReader<File>, Box<dyn std::error::Error>> {
         let mut reader = BufReader::new(File::open(path)?);
 
         // read header
@@ -70,11 +79,27 @@ impl RouteCollectionReader<File> {
         Ok(RouteCollectionReader {
             reader,
             header,
+            route_index: 0,
         })
     }
 
-    pub fn read_route(&mut self) -> Result<Route, Box<dyn std::error::Error>> {
-        Ok(bincode::deserialize_from(&mut self.reader)?)
+    pub fn header(&self) -> &RouteCollectionHeader {
+        &self.header
     }
 }
 
+impl Iterator for RouteCollectionReader<File> {
+    type Item = Result<Route, Box<dyn std::error::Error>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.route_index >= self.header.number_of_routes {
+            None
+        } else {
+            self.route_index += 1;
+            match bincode::deserialize_from(&mut self.reader) {
+                Ok(route) => Some(Ok(route)),
+                Err(err) => Some(Err(err)),
+            }
+        }
+    }
+}

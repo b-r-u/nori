@@ -61,7 +61,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  .validator(is_number::<f64>)
              )
         )
+        .subcommand(SubCommand::with_name("routes")
+            .about("Read *.routes files.")
+            .arg(Arg::with_name("input")
+                 .long("input")
+                 .value_name("FILE")
+                 .help("Sets an input *.routes file")
+                 .takes_value(true)
+                 .required(true)
+            )
+        )
         .get_matches();
+
 
     if let Some(matches) = matches.subcommand_matches("sample") {
         let number_of_samples = matches.value_of("number").unwrap().parse::<u32>().unwrap();
@@ -103,7 +114,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             net.bump_edges(&res.node_ids);
         }
 
+        writer.finish()?;
         net.write_to_geojson(geojson_path)?;
+    } else if let Some(matches) = matches.subcommand_matches("routes") {
+        let routes_path = matches.value_of("input").unwrap();
+        let reader = route::RouteCollectionReader::new(&routes_path)?;
+        println!("{:?}", reader.header());
+
+        for (i, route) in reader.enumerate() {
+            println!("Route #{}: {} nodes", i + 1, route?.node_ids.len());
+        }
     }
 
     Ok(())
