@@ -9,7 +9,6 @@ homepage = "https://github.com/b-r-u/nori"
 description = """
 Estimate average daily traffic on a road network by sampling a distribution of shortest paths.
 """
-license = "MIT OR Apache-2.0"
 categories = ["science"]
 keywords = ["traffic", "road", "osrm", "openstreetmap"]
 license = "MIT OR Apache-2.0"
