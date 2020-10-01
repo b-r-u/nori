@@ -3,6 +3,16 @@ name = "nori"
 version = "0.1.0"
 authors = ["Johannes Hofmann <mail@b-r-u.org>"]
 edition = "2018"
+readme = "README.md"
+repository = "https://github.com/b-r-u/nori"
+homepage = "https://github.com/b-r-u/nori"
+description = """
+Estimate average daily traffic on a road network by sampling a distribution of shortest paths.
+"""
+license = "MIT OR Apache-2.0"
+categories = ["science"]
+keywords = ["traffic", "road", "osrm", "openstreetmap"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 osrmreader = "0.1"
