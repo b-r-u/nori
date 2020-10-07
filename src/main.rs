@@ -1,13 +1,16 @@
-use clap::{Arg, App, AppSettings, SubCommand};
-use rand::Rng;
+use std::fs::File;
+use clap::{Arg, ArgGroup, App, AppSettings, SubCommand};
 
 
 mod network;
 mod route;
 mod routing_machine;
+mod sampling;
 
 use network::Network;
+use route::RouteCollectionWriter;
 use routing_machine::RoutingMachine;
+use sampling::Sampling;
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -57,9 +60,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                        bounding box")
                  .takes_value(true)
                  .number_of_values(4)
-                 .required(true)
                  .validator(is_number::<f64>)
              )
+            .arg(Arg::with_name("weighted")
+                 .long("weighted")
+                 .value_name("FILE.csv")
+                 .help("sample from a list of weighted points from the given CSV file.")
+                 .takes_value(true)
+             )
+            .group(ArgGroup::with_name("sampling")
+                 .args(&["uniform2d", "weighted"])
+                 .required(true))
         )
         .subcommand(SubCommand::with_name("routes")
             .about("Read *.routes files.")
@@ -79,39 +90,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let osrm_path = matches.value_of("osrm").unwrap();
         let routes_path = matches.value_of("routes").unwrap();
         let geojson_path = matches.value_of("geojson").unwrap();
-        let aabb: Vec<_> = matches.values_of("uniform2d").unwrap()
-            .map(|s| s.parse::<f64>().unwrap()).collect();
-        assert_eq!(aabb.len(), 4);
+
+        let mut machine = RoutingMachine::new();
+        machine.test_connection()?;
 
         println!("Read *.osrm file {:?}", osrm_path);
         let mut net = Network::from_path(osrm_path)?;
-        let mut writer = route::RouteCollectionWriter::new(
+        let mut writer = RouteCollectionWriter::new(
             routes_path,
             osrm_path,
             "sample",
         )?;
 
-        let mut rng = rand::thread_rng();
-
-        let mut gen_point = || -> (f64, f64) {
-            let min_lon = aabb[0];
-            let min_lat = aabb[1];
-            let max_lon = aabb[2];
-            let max_lat = aabb[3];
-            let lon: f64 = rng.gen::<f64>() * (max_lon - min_lon) + min_lon;
-            let lat: f64 = rng.gen::<f64>() * (max_lat - min_lat) + min_lat;
-            (lon, lat)
-        };
-        let machine = RoutingMachine::new();
-
-        for _ in 0..number_of_samples {
-            let a = gen_point();
-            let b = gen_point();
-
-            println!("rand {:?} {:?}", a, b);
-            let res = machine.find_route(a.0, a.1, b.0, b.1)?;
-            let res = writer.write_route(res)?;
-            net.bump_edges(&res.node_ids);
+        if matches.is_present("uniform2d") {
+            let aabb: Vec<_> = matches.values_of("uniform2d").unwrap()
+                .map(|s| s.parse::<f64>().unwrap()).collect();
+            assert_eq!(aabb.len(), 4);
+            let mut uni_sample = sampling::Uniform2D::new(aabb[0], aabb[1], aabb[2], aabb[3]);
+            sample(&mut uni_sample, number_of_samples, &mut machine, &mut writer, &mut net)?;
+        } else if matches.is_present("weighted") {
+            let csv_path = matches.value_of("weighted").unwrap();
+            //let mut sampl = sampling::Weighted::from_csv(csv_path)?;
+            //sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
         }
 
         writer.finish()?;
@@ -136,3 +136,25 @@ fn is_number<T: std::str::FromStr>(s: String) -> Result<(), String> {
         Err(_) => Err(format!("need a number")),
     }
 }
+
+
+fn sample<S: Sampling>(
+    sampl: &mut S,
+    number_of_samples: u32,
+    machine: &mut RoutingMachine,
+    writer: &mut RouteCollectionWriter<File>,
+    net: &mut Network,
+) -> Result<(), Box<dyn std::error::Error>>
+{
+    for _ in 0..number_of_samples {
+        let a = sampl.gen_point();
+        let b = sampl.gen_point();
+
+        println!("rand {:?} {:?}", a, b);
+        let res = machine.find_route(a.0, a.1, b.0, b.1)?;
+        let res = writer.write_route(res)?;
+        net.bump_edges(&res.node_ids);
+    }
+    Ok(())
+}
+
