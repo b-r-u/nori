@@ -14,6 +14,21 @@ impl RoutingMachine {
         }
     }
 
+    pub fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let resp = self.client.get(
+            "http://127.0.0.1:5000/route/v1/nearest/0.0,0.0;0.0,0.0"
+            )
+            .send()?
+            .text()?;
+
+        let json_value: serde_json::Value = serde_json::from_str(&resp)?;
+
+        match json_value.get("code").and_then(|v| v.as_str()) {
+            Some("Ok") => Ok(()),
+            _ => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "status code is not Ok"))),
+        }
+    }
+
     pub fn find_route(&self, a_lon: f64, a_lat: f64, b_lon: f64, b_lat: f64) -> Result<Route, Box<dyn std::error::Error>> {
         let resp = self.client.get(
             &format!("http://127.0.0.1:5000/route/v1/driving/{},{};{},{}", a_lon, a_lat, b_lon, b_lat))
