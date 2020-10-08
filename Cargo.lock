@@ -259,6 +259,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "geomatic"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "853c59806caf4aaadbe15d2abcaea6f35ef1e4211b6707c7a0fcceb026500154"
+
+[[package]]
 name = "getrandom"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -550,6 +556,7 @@ dependencies = [
  "bincode",
  "clap",
  "csv",
+ "geomatic",
  "osrmreader",
  "rand",
  "reqwest",

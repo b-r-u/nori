@@ -1,3 +1,4 @@
+use geomatic::Point4326;
 use serde::de::Deserialize;
 
 use crate::route::Route;
@@ -29,9 +30,9 @@ impl RoutingMachine {
         }
     }
 
-    pub fn find_route(&self, a_lon: f64, a_lat: f64, b_lon: f64, b_lat: f64) -> Result<Route, Box<dyn std::error::Error>> {
+    pub fn find_route(&self, a: Point4326, b: Point4326) -> Result<Route, Box<dyn std::error::Error>> {
         let resp = self.client.get(
-            &format!("http://127.0.0.1:5000/route/v1/driving/{},{};{},{}", a_lon, a_lat, b_lon, b_lat))
+            &format!("http://127.0.0.1:5000/route/v1/driving/{},{};{},{}", a.lon(), a.lat(), b.lon(), b.lat()))
             .query(&[("annotations", "nodes")])
             .send()?
             .text()?;
@@ -54,8 +55,8 @@ impl RoutingMachine {
         let conv = |c: f64| {(c * 10e6) as i32};
 
         let route = Route {
-            start_coord: (conv(a_lat), conv(a_lon)),
-            end_coord: (conv(b_lat), conv(b_lon)),
+            start_coord: (conv(a.lat()), conv(a.lon())),
+            end_coord: (conv(b.lat()), conv(b.lon())),
             node_ids,
         };
 

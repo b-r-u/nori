@@ -1,12 +1,15 @@
 use std::fs::File;
 use clap::{Arg, ArgGroup, App, AppSettings, SubCommand};
+use geomatic::Point4326;
 
 
+mod bounding_box;
 mod network;
 mod route;
 mod routing_machine;
 mod sampling;
 
+use bounding_box::BoundingBox;
 use network::Network;
 use route::RouteCollectionWriter;
 use routing_machine::RoutingMachine;
@@ -51,6 +54,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  .takes_value(true)
                  .required(true)
                  .validator(is_number::<u32>)
+             )
+            .arg(Arg::with_name("bounds")
+                 .long("bounds")
+                 .value_name("sw.1 sw.2 ne.1 ne.2")
+                 .help("Sets the bounding box. Input values are the two coordinate pairs for the
+                       south-west and the north-east corner of the bounding box")
+                 .takes_value(true)
+                 .number_of_values(4)
+                 .validator(is_number::<f64>)
              )
             .arg(Arg::with_name("uniform2d")
                  .long("uniform2d")
@@ -109,9 +121,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut uni_sample = sampling::Uniform2D::new(aabb[0], aabb[1], aabb[2], aabb[3]);
             sample(&mut uni_sample, number_of_samples, &mut machine, &mut writer, &mut net)?;
         } else if matches.is_present("weighted") {
+            let bounds = if matches.is_present("bounds") {
+                let aabb: Vec<_> = matches.values_of("bounds").unwrap()
+                    .map(|s| s.parse::<f64>().unwrap()).collect();
+                assert_eq!(aabb.len(), 4);
+                Some(BoundingBox::new(
+                    Point4326::new(aabb[0], aabb[1]),
+                    Point4326::new(aabb[2], aabb[3]))
+                )
+            } else {
+                None
+            };
+
             let csv_path = matches.value_of("weighted").unwrap();
-            //let mut sampl = sampling::Weighted::from_csv(csv_path)?;
-            //sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
+            let mut sampl = sampling::Weighted::from_csv(csv_path, bounds)?;
+            sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
         }
 
         writer.finish()?;
@@ -146,12 +170,12 @@ fn sample<S: Sampling>(
     net: &mut Network,
 ) -> Result<(), Box<dyn std::error::Error>>
 {
-    for _ in 0..number_of_samples {
+    for i in 0..number_of_samples {
         let a = sampl.gen_point();
         let b = sampl.gen_point();
 
-        println!("rand {:?} {:?}", a, b);
-        let res = machine.find_route(a.0, a.1, b.0, b.1)?;
+        println!("{}%, {}: {} {}", (100.0 * (i + 1) as f64) / (number_of_samples as f64), i + 1, a, b);
+        let res = machine.find_route(a, b)?;
         let res = writer.write_route(res)?;
         net.bump_edges(&res.node_ids);
     }

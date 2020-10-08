@@ -1,8 +1,9 @@
-use serde::{Serialize, Deserialize};
 use std::io::{BufReader, BufWriter, Read, Seek, Write};
 use std::fs::File;
 use std::path::Path;
+
 use bincode;
+use serde::{Serialize, Deserialize};
 
 type LatLon = (i32, i32);
 
