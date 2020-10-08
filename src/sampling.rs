@@ -16,32 +16,29 @@ pub trait Sampling {
 
 pub struct Uniform2D {
     rng: rand::rngs::ThreadRng,
-    min_lon: f64,
-    min_lat: f64,
-    max_lon: f64,
-    max_lat: f64,
+    bounds: BoundingBox,
 }
 
 impl Uniform2D {
-    pub fn new(min_lon: f64, min_lat: f64, max_lon: f64, max_lat: f64) -> Self {
+    pub fn new(bounds: BoundingBox) -> Self {
         Uniform2D {
             rng: rand::thread_rng(),
-            min_lon,
-            min_lat,
-            max_lon,
-            max_lat,
+            bounds,
         }
     }
 }
 
 impl Sampling for Uniform2D {
     fn gen_point(&mut self) -> Point4326 {
-        let lon: f64 = self.rng.gen::<f64>() * (self.max_lon - self.min_lon) + self.min_lon;
-        let lat: f64 = self.rng.gen::<f64>() * (self.max_lat - self.min_lat) + self.min_lat;
+        let min_lat = self.bounds.sw.lat();
+        let min_lon = self.bounds.sw.lon();
+        let max_lat = self.bounds.ne.lat();
+        let max_lon = self.bounds.ne.lon();
+        let lon: f64 = self.rng.gen::<f64>() * (max_lon - min_lon) + min_lon;
+        let lat: f64 = self.rng.gen::<f64>() * (max_lat - min_lat) + min_lat;
         Point4326::new(lat, lon)
     }
 }
-
 
 
 pub struct Weighted {
