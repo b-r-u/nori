@@ -64,18 +64,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  .number_of_values(4)
                  .validator(is_number::<f64>)
              )
+            .arg(Arg::with_name("max_dist")
+                 .long("max-dist")
+                 .value_name("METERS")
+                 .help("Sets the maximum distance between source and destination points in
+                       meters.")
+                 .takes_value(true)
+                 .validator(is_number::<f64>)
+             )
             .arg(Arg::with_name("uniform2d")
                  .long("uniform2d")
-                 .help("Sets bounding box for a uniform sampling on the 2D plane. Input values are
-                       the two coordinate pairs for the south-west and the north-east corner of the
-                       bounding box")
-                 .requires("bounds")
+                 .help("Sample the 2D plane uniformly.")
+                 .requires_all(&["bounds", "max_dist"])
              )
             .arg(Arg::with_name("weighted")
                  .long("weighted")
                  .value_name("FILE.csv")
                  .help("sample from a list of weighted points from the given CSV file.")
                  .takes_value(true)
+                 .requires_all(&["max_dist"])
              )
             .group(ArgGroup::with_name("sampling")
                  .args(&["uniform2d", "weighted"])
@@ -124,11 +131,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
 
         if matches.is_present("uniform2d") {
-            let mut uni_sample = sampling::Uniform2D::new(bounds.unwrap());
+            let max_dist: f64 = matches.value_of("max_dist").unwrap().parse::<f64>()?;
+            let mut uni_sample = sampling::Uniform2D::new(bounds.unwrap(), max_dist);
             sample(&mut uni_sample, number_of_samples, &mut machine, &mut writer, &mut net)?;
         } else if matches.is_present("weighted") {
+            let max_dist: f64 = matches.value_of("max_dist").unwrap().parse::<f64>()?;
             let csv_path = matches.value_of("weighted").unwrap();
-            let mut sampl = sampling::Weighted::from_csv(csv_path, bounds)?;
+            let mut sampl = sampling::Weighted::from_csv(csv_path, bounds, max_dist)?;
             sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
         }
 
@@ -165,8 +174,8 @@ fn sample<S: Sampling>(
 ) -> Result<(), Box<dyn std::error::Error>>
 {
     for i in 0..number_of_samples {
-        let a = sampl.gen_point();
-        let b = sampl.gen_point();
+        let a = sampl.gen_source();
+        let b = sampl.gen_destination(a);
 
         println!("{}%, {}: {} {}", (100.0 * (i + 1) as f64) / (number_of_samples as f64), i + 1, a, b);
         let res = machine.find_route(a, b)?;
