@@ -44,7 +44,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  .value_name("FILE")
                  .help("Sets the output GeoJSON file to store the road network with traffic counts")
                  .takes_value(true)
-                 .required(true)
+             )
+            .arg(Arg::with_name("png")
+                 .long("png")
+                 .value_name("FILE")
+                 .help("Sets the output PNG file to store a rendering of the road network with traffic counts")
+                 .takes_value(true)
              )
             .arg(Arg::with_name("number")
                  .long("number")
@@ -105,7 +110,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let number_of_samples = matches.value_of("number").unwrap().parse::<u32>().unwrap();
         let osrm_path = matches.value_of("osrm").unwrap();
         let routes_path = matches.value_of("routes").unwrap();
-        let geojson_path = matches.value_of("geojson").unwrap();
 
         let bounds = if matches.is_present("bounds") {
             let aabb: Vec<_> = matches.values_of("bounds").unwrap()
@@ -142,7 +146,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         writer.finish()?;
-        net.write_to_geojson(geojson_path)?;
+
+        if let Some(geojson_path) = matches.value_of("geojson") {
+            net.write_to_geojson(geojson_path)?;
+        }
+
+        if let Some(png_path) = matches.value_of("png") {
+            if let Some(bounds) = bounds {
+                net.render_png(png_path, bounds, 2048, 2048);
+            } else {
+                net.render_png(png_path, net.get_bounds(), 2048, 2048);
+            }
+        }
     } else if let Some(matches) = matches.subcommand_matches("routes") {
         let routes_path = matches.value_of("input").unwrap();
         let reader = route::RouteCollectionReader::new(&routes_path)?;
@@ -177,7 +192,7 @@ fn sample<S: Sampling>(
         let a = sampl.gen_source();
         let b = sampl.gen_destination(a);
 
-        println!("{}%, {}: {} {}", (100.0 * (i + 1) as f64) / (number_of_samples as f64), i + 1, a, b);
+        println!("{:.2}%, {}: {} {}", (100.0 * (i + 1) as f64) / (number_of_samples as f64), i + 1, a, b);
         let res = machine.find_route(a, b)?;
         let res = writer.write_route(res)?;
         net.bump_edges(&res.node_ids);
