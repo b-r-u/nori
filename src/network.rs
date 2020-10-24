@@ -164,8 +164,10 @@ impl Network {
         }
     }
 
-    /// Render the network as a PNG file.
-    pub fn render_png<P: AsRef<Path>>(&self, path: P, bounds: BoundingBox, width: i32, height: i32) {
+    /// Render the network as an image.
+    pub fn render_image(&self, bounds: BoundingBox, width: i32, height: i32)
+        -> DrawTarget
+    {
         let mut dt = DrawTarget::new(width, height);
         dt.fill_rect(
             0.0,
@@ -180,6 +182,10 @@ impl Network {
             }),
             &raqote::DrawOptions::new()
         );
+
+        if self.edges_map.is_empty() {
+            return dt;
+        }
 
         let bounds_3035 = bounds.get_3035_bounds();
 
@@ -266,6 +272,15 @@ impl Network {
                 &raqote::DrawOptions::new()
             );
         }
-        dt.write_png(path);
+        dt
+    }
+
+    /// Render an image of the network and save as a PNG file.
+    pub fn write_png<P: AsRef<Path>>(&self, path: P, bounds: BoundingBox, width: i32, height: i32)
+        -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dt = self.render_image(bounds, width, height);
+        dt.write_png(path)?;
+        Ok(())
     }
 }

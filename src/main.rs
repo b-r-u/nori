@@ -153,9 +153,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if let Some(png_path) = matches.value_of("png") {
             if let Some(bounds) = bounds {
-                net.render_png(png_path, bounds, 2048, 2048);
+                net.write_png(png_path, bounds, 2048, 2048)?;
             } else {
-                net.render_png(png_path, net.get_bounds(), 2048, 2048);
+                net.write_png(png_path, net.get_bounds(), 2048, 2048)?;
             }
         }
     } else if let Some(matches) = matches.subcommand_matches("routes") {
