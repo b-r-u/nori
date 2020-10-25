@@ -1,5 +1,5 @@
-NORI - naive aggregated road traffic estimation
-===============================================
+NORI
+====
 
 Estimate average daily traffic on a road network by sampling a distribution of shortest paths.
 
@@ -84,7 +84,9 @@ cargo build --release
 (Make sure the OSRM backend server is running and you have created an `*.osrm` file)
 
 ```bash
-cargo run --release -- sample -n 1000 --osrm berlin-latest.osrm --geojson berlin.geojson --routes berlin.routes --uniform2d --bounds 52.4422 13.2392 52.5738 13.5125 --max-dist 5000
+cargo run --release -- sample -n 1000 --osrm berlin-latest.osrm \
+  --geojson berlin.geojson --routes berlin.routes --png berlin.png \
+  --uniform2d --bounds 52.4422 13.2392 52.5738 13.5125 --max-dist 5000
 
 # See all command line options
 cargo run --release -- -h
