@@ -16,9 +16,16 @@ pub struct Network {
 }
 
 struct Edge {
+    /// first point
     a: Point4326,
+    /// second point
     b: Point4326,
+    /// Number of routes that passed trough this edge
     number: usize,
+    /// Index of first point into node vector
+    a_index: u32,
+    /// Index of second point
+    b_index: u32,
 }
 
 impl Network {
@@ -50,12 +57,22 @@ impl Network {
 
             write!(
                 output,
-                "\n{{\"type\": \"Feature\", \"properties\": {{\"number\": {}}}, \"geometry\": {{\"type\": \"LineString\", \"coordinates\": [[{:.6}, {:.6}], [{:.6}, {:.6}]]}}}}",
-                edge.number,
-                edge.a.lon(),
-                edge.a.lat(),
-                edge.b.lon(),
-                edge.b.lat(),
+                "\n{{\"type\": \"Feature\", \
+                   \"properties\": {{\
+                   \"number\": {number}, \
+                   \"a_index\": {a_index}, \
+                   \"b_index\": {b_index}\
+                   }}, \
+                   \"geometry\": {{\
+                     \"type\": \"LineString\", \
+                     \"coordinates\": [[{a_lon:.6}, {a_lat:.6}], [{b_lon:.6}, {b_lat:.6}]]}}}}",
+                number = edge.number,
+                a_lon = edge.a.lon(),
+                a_lat = edge.a.lat(),
+                b_lon = edge.b.lon(),
+                b_lat = edge.b.lat(),
+                a_index = edge.a_index,
+                b_index = edge.b_index,
             )?;
         }
 
@@ -68,13 +85,15 @@ impl Network {
 
 
     fn edges(&self) -> impl Iterator<Item=Edge> + '_ {
-        self.edges_map.values().map(move |(source_index, target_index, number)| {
-            let source = self.nodes_vec[*source_index as usize];
-            let target = self.nodes_vec[*target_index as usize];
+        self.edges_map.values().map(move |&(a_index, b_index, number)| {
+            let source = self.nodes_vec[a_index as usize];
+            let target = self.nodes_vec[b_index as usize];
             Edge {
                 a: Point4326::new(source.1 as f64 * 0.000001, source.2 as f64 * 0.000001),
                 b: Point4326::new(target.1 as f64 * 0.000001, target.2 as f64 * 0.000001),
-                number: *number,
+                number: number,
+                a_index,
+                b_index,
             }
         })
     }
