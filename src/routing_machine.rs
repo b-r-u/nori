@@ -38,19 +38,8 @@ impl RoutingMachine {
             .text()?;
 
         let json_value: serde_json::Value = serde_json::from_str(&resp)?;
-
-        let nodes_array = json_value
-            .get("routes")
-            .and_then(|x| x.get(0))
-            .and_then(|x| x.get("legs"))
-            .and_then(|x| x.get(0))
-            .and_then(|x| x.get("annotation"))
-            .and_then(|x| x.get("nodes"));
-
-        let node_ids = match nodes_array {
-            Some(arr) => Vec::<i64>::deserialize(arr).unwrap(),
-            None => vec![],
-        };
+        let nodes_array = &json_value["routes"][0]["legs"][0]["annotation"]["nodes"];
+        let node_ids = Vec::<i64>::deserialize(nodes_array)?;
 
         let conv = |c: f64| {(c * 10e6) as i32};
 
