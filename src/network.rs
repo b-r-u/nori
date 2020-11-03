@@ -15,17 +15,17 @@ pub struct Network {
     edges_map: HashMap<(i64, i64), (u32, u32, usize)>,
 }
 
-struct Edge {
+pub struct Edge {
     /// first point
-    a: Point4326,
+    pub a: Point4326,
     /// second point
-    b: Point4326,
+    pub b: Point4326,
     /// Number of routes that passed trough this edge
-    number: usize,
+    pub number: usize,
     /// Index of first point into node vector
-    a_index: u32,
+    pub a_index: u32,
     /// Index of second point
-    b_index: u32,
+    pub b_index: u32,
 }
 
 impl Network {
@@ -84,7 +84,7 @@ impl Network {
     }
 
 
-    fn edges(&self) -> impl Iterator<Item=Edge> + '_ {
+    pub fn edges(&self) -> impl Iterator<Item=Edge> + '_ {
         self.edges_map.values().map(move |&(a_index, b_index, number)| {
             let source = self.nodes_vec[a_index as usize];
             let target = self.nodes_vec[b_index as usize];

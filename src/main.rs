@@ -4,6 +4,7 @@ use geomatic::Point4326;
 
 
 mod bounding_box;
+mod compare;
 mod network;
 mod route;
 mod routing_machine;
@@ -44,6 +45,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                  .value_name("FILE")
                  .help("Sets the output GeoJSON file to store the road network with traffic counts")
                  .takes_value(true)
+             )
+            .arg(Arg::with_name("compare")
+                 .long("compare")
+                 .value_names(&["FILE", "GEOJSON PROPERTY"])
+                 .help("Specify the GeoJSON file and the name of the relevant numerical property that contains empirical traffic data")
+                 .takes_value(true)
+                 .number_of_values(2),
              )
             .arg(Arg::with_name("png")
                  .long("png")
@@ -157,6 +165,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 net.write_png(png_path, net.get_bounds(), 2048, 2048)?;
             }
+        }
+
+        if let Some(mut compare_args) = matches.values_of("compare") {
+            let geojson_path = compare_args.next().unwrap();
+            let number_property = compare_args.next().unwrap();
+            compare::compare(&net, geojson_path, number_property)?;
         }
     } else if let Some(matches) = matches.subcommand_matches("routes") {
         let routes_path = matches.value_of("input").unwrap();
