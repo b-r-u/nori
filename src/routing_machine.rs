@@ -3,7 +3,6 @@ use serde::de::Deserialize;
 
 use crate::route::Route;
 
-
 pub struct RoutingMachine {
     client: reqwest::blocking::Client,
 }
@@ -39,7 +38,7 @@ impl RoutingMachine {
 
         let json_value: serde_json::Value = serde_json::from_str(&resp)?;
         let nodes_array = &json_value["routes"][0]["legs"][0]["annotation"]["nodes"];
-        let node_ids = Vec::<i64>::deserialize(nodes_array)?;
+        let node_ids = Vec::<_>::deserialize(nodes_array)?;
 
         let conv = |c: f64| {(c * 10e6) as i32};
 

@@ -6,13 +6,17 @@ use std::path::Path;
 use geomatic::{laea, Point3035, Point4326};
 use osrmreader::{Entry, OsrmReader};
 use raqote::DrawTarget;
+use serde::{Serialize, Deserialize};
 
 use crate::bounding_box::BoundingBox;
 
 
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct OsmNodeId(i64);
+
 pub struct Network {
-    nodes_vec: Vec<(i64, i32, i32)>,
-    edges_map: HashMap<(i64, i64), (u32, u32, usize)>,
+    nodes_vec: Vec<(OsmNodeId, i32, i32)>,
+    edges_map: HashMap<(OsmNodeId, OsmNodeId), (u32, u32, usize)>,
 }
 
 pub struct Edge {
@@ -29,7 +33,7 @@ pub struct Edge {
 }
 
 impl Network {
-    pub fn bump_edges(&mut self, nodes: &[i64]) {
+    pub fn bump_edges(&mut self, nodes: &[OsmNodeId]) {
         for win in nodes.windows(2) {
             if win.len() == 2 {
                 match self.edges_map.get_mut(&(win[0], win[1])) {
@@ -111,7 +115,7 @@ impl Network {
                     // Read nodes
                     for n in nodes {
                         let n = n?;
-                        nodes_vec.push((n.node_id, n.raw_latitude, n.raw_longitude))
+                        nodes_vec.push((OsmNodeId(n.node_id), n.raw_latitude, n.raw_longitude))
                     }
                 },
                 Entry::Edges(edges) => {

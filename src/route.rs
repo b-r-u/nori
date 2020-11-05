@@ -5,13 +5,15 @@ use std::path::Path;
 use bincode;
 use serde::{Serialize, Deserialize};
 
+use crate::network::OsmNodeId;
+
 type LatLon = (i32, i32);
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct Route {
     pub start_coord: LatLon,
     pub end_coord: LatLon,
-    pub node_ids: Vec<i64>,
+    pub node_ids: Vec<OsmNodeId>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
