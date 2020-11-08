@@ -32,7 +32,9 @@ pub struct RouteCollectionWriter<W: Write> {
 
 
 impl RouteCollectionWriter<File> {
-    pub fn new<P: AsRef<Path>, S: Into<String>>(path: P, osrm_file: S, scenario: S) -> Result<RouteCollectionWriter<File>, Box<dyn std::error::Error>> {
+    pub fn new<P: AsRef<Path>, S: Into<String>>(path: P, osrm_file: S, scenario: S)
+        -> anyhow::Result<RouteCollectionWriter<File>>
+    {
         let mut writer = BufWriter::new(File::create(path)?);
 
         // write header
@@ -51,13 +53,13 @@ impl RouteCollectionWriter<File> {
         })
     }
 
-    pub fn write_route(&mut self, route: Route) -> Result<Route, Box<dyn std::error::Error>> {
+    pub fn write_route(&mut self, route: Route) -> anyhow::Result<Route> {
         bincode::serialize_into(&mut self.writer, &route)?;
         self.header.number_of_routes += 1;
         Ok(route)
     }
 
-    pub fn finish(mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn finish(mut self) -> anyhow::Result<()> {
         // Move to start of file
         self.writer.seek(std::io::SeekFrom::Start(0))?;
         // Write header again, but with correct number_of_routes
@@ -73,7 +75,7 @@ pub struct RouteCollectionReader<R: Read> {
 }
 
 impl RouteCollectionReader<File> {
-    pub fn new<P: AsRef<Path>>(path: P) -> Result<RouteCollectionReader<File>, Box<dyn std::error::Error>> {
+    pub fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<RouteCollectionReader<File>> {
         let mut reader = BufReader::new(File::open(path)?);
 
         // read header
@@ -92,7 +94,7 @@ impl RouteCollectionReader<File> {
 }
 
 impl Iterator for RouteCollectionReader<File> {
-    type Item = Result<Route, Box<dyn std::error::Error>>;
+    type Item = anyhow::Result<Route>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.route_index >= self.header.number_of_routes {
@@ -101,7 +103,7 @@ impl Iterator for RouteCollectionReader<File> {
             self.route_index += 1;
             match bincode::deserialize_from(&mut self.reader) {
                 Ok(route) => Some(Ok(route)),
-                Err(err) => Some(Err(err)),
+                Err(err) => Some(Err(err.into())),
             }
         }
     }

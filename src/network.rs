@@ -44,7 +44,7 @@ impl Network {
         }
     }
 
-    pub fn write_to_geojson<P: AsRef<Path>>(&self, output_path: P) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn write_to_geojson<P: AsRef<Path>>(&self, output_path: P) -> Result<(), std::io::Error> {
         let mut output = BufWriter::new(File::create(output_path)?);
         output.write(b"{\"type\": \"FeatureCollection\", \"features\": [")?;
 
@@ -103,7 +103,7 @@ impl Network {
     }
 
 
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Network, Box<dyn std::error::Error>> {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Network, std::io::Error> {
         let f = std::fs::File::open(path)?;
         let mut reader = OsrmReader::new(f);
         let mut nodes_vec = vec![];
@@ -300,7 +300,7 @@ impl Network {
 
     /// Render an image of the network and save as a PNG file.
     pub fn write_png<P: AsRef<Path>>(&self, path: P, bounds: BoundingBox, width: i32, height: i32)
-        -> Result<(), Box<dyn std::error::Error>>
+        -> Result<(), std::io::Error>
     {
         let dt = self.render_image(bounds, width, height);
         dt.write_png(path)?;

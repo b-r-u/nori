@@ -1,4 +1,5 @@
 use std::fs::File;
+use anyhow::Context;
 use clap::{Arg, ArgGroup, App, AppSettings, SubCommand};
 use geomatic::Point4326;
 
@@ -17,8 +18,7 @@ use routing_machine::RoutingMachine;
 use sampling::Sampling;
 
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-
+fn main() -> anyhow::Result<()> {
     let matches = App::new("nori - naive aggregated traffic estimation")
         .version("0.1")
         .author("Johannes Hofmann <mail@b-r-u.org>")
@@ -113,7 +113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .get_matches();
 
+    run(matches)
+}
 
+fn run(matches: clap::ArgMatches) -> anyhow::Result<()> {
     if let Some(matches) = matches.subcommand_matches("sample") {
         let number_of_samples = matches.value_of("number").unwrap().parse::<u32>().unwrap();
         let osrm_path = matches.value_of("osrm").unwrap();
@@ -132,10 +135,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let mut machine = RoutingMachine::new();
-        machine.test_connection()?;
+        machine.test_connection()
+            .context("Failed to connect to routing server. Start osrm-routed like this:\
+                     \n    osrm-routed --algorithm mld an_example_file.osrm")?;
 
         println!("Read *.osrm file {:?}", osrm_path);
-        let mut net = Network::from_path(osrm_path)?;
+        let mut net = Network::from_path(osrm_path)
+            .with_context(|| format!(
+                "Failed to read *.osrm file {:?}", osrm_path
+            ))?;
         let mut writer = RouteCollectionWriter::new(
             routes_path,
             osrm_path,
@@ -174,7 +182,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     } else if let Some(matches) = matches.subcommand_matches("routes") {
         let routes_path = matches.value_of("input").unwrap();
-        let reader = route::RouteCollectionReader::new(&routes_path)?;
+        let reader = route::RouteCollectionReader::new(&routes_path)
+            .with_context(|| format!(
+                "Failed to read the routes file {:?}", routes_path
+            ))?;
         println!("{:?}", reader.header());
 
         for (i, route) in reader.enumerate() {
@@ -200,7 +211,7 @@ fn sample<S: Sampling>(
     machine: &mut RoutingMachine,
     writer: &mut RouteCollectionWriter<File>,
     net: &mut Network,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> anyhow::Result<()>
 {
     for i in 0..number_of_samples {
         let a = sampl.gen_source();

@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 
+use anyhow::Context;
 use geojson::GeoJson;
 use geomatic::{laea, Point3035, Point4326};
 use rstar::primitives::Line;
@@ -12,6 +13,7 @@ use rstar::{AABB, PointDistance, RTree, RTreeObject};
 use crate::network;
 
 
+/// A line segment that can be inserted into an RTree.
 pub struct Segment {
     line: Line<[f64; 2]>,
     number: f64,
@@ -87,9 +89,12 @@ fn edge_as_line(edge: &network::Edge) -> Line<[f64; 2]> {
 }
 
 pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_property: &str)
-    -> Result<(), Box<dyn std::error::Error>>
+    -> anyhow::Result<()>
 {
-    let tree = geojson_to_rtree(geojson_path, number_property)?;
+    let tree = geojson_to_rtree(&geojson_path, number_property)
+        .with_context(
+            || format!("Failed to read GeoJSON file {:?}", geojson_path.as_ref().display())
+        )?;
     println!("Built reference RTree with {} segments", tree.size());
     let _sim_tree = network_to_rtree(net);
     println!("Built simulated RTree with {} segments", _sim_tree.size());
@@ -165,11 +170,11 @@ pub fn network_to_rtree(network: &network::Network) -> RTree<Segment> {
 }
 
 pub fn geojson_to_rtree<P: AsRef<Path>>(geojson_path: P, number_property: &str)
-    -> Result<RTree<Segment>, Box<dyn std::error::Error>>
+    -> anyhow::Result<RTree<Segment>>
 {
     // Parse GeoJSON
     let geojson: GeoJson = {
-        let mut f = File::open(geojson_path)?;
+        let mut f = File::open(&geojson_path)?;
         let mut geojson_str = String::new();
         f.read_to_string(&mut geojson_str)?;
         geojson_str.parse::<GeoJson>()?
@@ -183,7 +188,7 @@ pub fn geojson_to_rtree<P: AsRef<Path>>(geojson_path: P, number_property: &str)
         &GeoJson::FeatureCollection(ref fc) => {
             for feature in &fc.features {
                 let line_string = feature.geometry.as_ref().map(|g| &g.value);
-                let number = feature.properties.as_ref().map(|p| &p[number_property]).and_then(|n| n.as_f64());
+                let number = feature.properties.as_ref().and_then(|p| p.get(number_property)).and_then(|n| n.as_f64());
 
                 if let (Some(geojson::Value::LineString(line_string)), Some(number)) = (line_string, number) {
                     let mut last_point = None;
@@ -199,7 +204,11 @@ pub fn geojson_to_rtree<P: AsRef<Path>>(geojson_path: P, number_property: &str)
                 }
             }
         },
-        _ => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "GeoJSON file is no FeatureCollection"))),
+        _ => anyhow::bail!("GeoJSON file is no FeatureCollection: {}", geojson_path.as_ref().display()),
+    }
+
+    if segments.is_empty() {
+        anyhow::bail!("GeoJSON file contains no features with the given property {:?}", number_property);
     }
 
     // Build RTree

@@ -73,7 +73,9 @@ pub struct Weighted {
 }
 
 impl Weighted {
-    pub fn from_csv<P: AsRef<Path>>(path: P, bounds: Option<BoundingBox>, max_dist: f64) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_csv<P: AsRef<Path>>(path: P, bounds: Option<BoundingBox>, max_dist: f64)
+        -> anyhow::Result<Self>
+    {
         println!("READ CSV");
         let buf_reader = BufReader::new(File::open(path)?);
         let mut rdr = csv::ReaderBuilder::new()

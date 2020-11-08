@@ -14,7 +14,7 @@ impl RoutingMachine {
         }
     }
 
-    pub fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn test_connection(&self) -> anyhow::Result<()> {
         let resp = self.client.get(
             "http://127.0.0.1:5000/route/v1/nearest/0.0,0.0;0.0,0.0"
             )
@@ -25,11 +25,11 @@ impl RoutingMachine {
 
         match json_value.get("code").and_then(|v| v.as_str()) {
             Some("Ok") => Ok(()),
-            _ => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "status code is not Ok"))),
+            _ => Err(anyhow::anyhow!("status code is not Ok")),
         }
     }
 
-    pub fn find_route(&self, a: Point4326, b: Point4326) -> Result<Route, Box<dyn std::error::Error>> {
+    pub fn find_route(&self, a: Point4326, b: Point4326) -> anyhow::Result<Route> {
         let resp = self.client.get(
             &format!("http://127.0.0.1:5000/route/v1/driving/{},{};{},{}", a.lon(), a.lat(), b.lon(), b.lat()))
             .query(&[("annotations", "nodes")])
