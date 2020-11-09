@@ -6,6 +6,7 @@ use geomatic::Point4326;
 
 mod bounding_box;
 mod compare;
+mod geojson_writer;
 mod network;
 mod route;
 mod routing_machine;

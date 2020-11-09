@@ -63,7 +63,9 @@ impl RouteCollectionWriter<File> {
         // Move to start of file
         self.writer.seek(std::io::SeekFrom::Start(0))?;
         // Write header again, but with correct number_of_routes
-        bincode::serialize_into(self.writer, &self.header)?;
+        bincode::serialize_into(&mut self.writer, &self.header)?;
+        // Always flush!
+        self.writer.flush()?;
         Ok(())
     }
 }

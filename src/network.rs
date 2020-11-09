@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use geomatic::{laea, Point3035, Point4326};
@@ -9,6 +7,7 @@ use raqote::DrawTarget;
 use serde::{Serialize, Deserialize};
 
 use crate::bounding_box::BoundingBox;
+use crate::geojson_writer::GeoJsonWriter;
 
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
@@ -44,45 +43,22 @@ impl Network {
         }
     }
 
-    pub fn write_to_geojson<P: AsRef<Path>>(&self, output_path: P) -> Result<(), std::io::Error> {
-        let mut output = BufWriter::new(File::create(output_path)?);
-        output.write(b"{\"type\": \"FeatureCollection\", \"features\": [")?;
+    pub fn write_to_geojson<P: AsRef<Path>>(&self, output_path: P) -> anyhow::Result<()> {
+        let mut writer = GeoJsonWriter::from_path(output_path)?;
 
-        let mut first = true;
         for edge in self.edges() {
             if edge.number < 1 {
                 continue;
             }
 
-            if !first {
-                write!(output, ",")?;
-            }
-            first = false;
-
-            write!(
-                output,
-                "\n{{\"type\": \"Feature\", \
-                   \"properties\": {{\
-                   \"number\": {number}, \
-                   \"a_index\": {a_index}, \
-                   \"b_index\": {b_index}\
-                   }}, \
-                   \"geometry\": {{\
-                     \"type\": \"LineString\", \
-                     \"coordinates\": [[{a_lon:.6}, {a_lat:.6}], [{b_lon:.6}, {b_lat:.6}]]}}}}",
-                number = edge.number,
-                a_lon = edge.a.lon(),
-                a_lat = edge.a.lat(),
-                b_lon = edge.b.lon(),
-                b_lat = edge.b.lat(),
-                a_index = edge.a_index,
-                b_index = edge.b_index,
-            )?;
+            let mut ls = writer.add_line_string(edge.a, edge.b)?;
+            ls.add_property("number", edge.number)?;
+            ls.add_property("a_index", edge.a_index)?;
+            ls.add_property("b_index", edge.b_index)?;
+            ls.finish()?;
         }
 
-        // Properly end the GeoJSON file
-        output.write(b"\n]}")?;
-        output.flush()?;
+        writer.finish()?;
 
         Ok(())
     }

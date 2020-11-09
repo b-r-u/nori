@@ -1,7 +1,7 @@
 //! Compare generated traffic numbers with empirical data.
 
 use std::fs::File;
-use std::io::{BufWriter, Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 use anyhow::Context;
@@ -10,6 +10,7 @@ use geomatic::{laea, Point3035, Point4326};
 use rstar::primitives::Line;
 use rstar::{AABB, PointDistance, RTree, RTreeObject};
 
+use crate::geojson_writer::GeoJsonWriter;
 use crate::network;
 
 
@@ -91,17 +92,15 @@ fn edge_as_line(edge: &network::Edge) -> Line<[f64; 2]> {
 pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_property: &str)
     -> anyhow::Result<()>
 {
-    let tree = geojson_to_rtree(&geojson_path, number_property)
+    let reference_traffic = geojson_to_rtree(&geojson_path, number_property)
         .with_context(
             || format!("Failed to read GeoJSON file {:?}", geojson_path.as_ref().display())
         )?;
-    println!("Built reference RTree with {} segments", tree.size());
-    let _sim_tree = network_to_rtree(net);
-    println!("Built simulated RTree with {} segments", _sim_tree.size());
+    println!("Built reference RTree with {} segments", reference_traffic.size());
+    let simulated_traffic = network_to_rtree(net);
+    println!("Built simulated RTree with {} segments", simulated_traffic.size());
 
-    let mut output = BufWriter::new(File::create("connections.geojson")?);
-    output.write(b"{\"type\": \"FeatureCollection\", \"features\": [")?;
-    let mut first = true;
+    let mut writer = GeoJsonWriter::from_path("connections.geojson")?;
 
     for edge in net.edges() {
         if edge.number == 0 {
@@ -109,48 +108,29 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
         }
         let line = edge_as_line(&edge);
         let center = line_center(&line);
-        for (nn, dist_2) in tree.nearest_neighbor_iter_with_distance_2(&center).take(1) {
+        for (nn, dist_2) in reference_traffic.nearest_neighbor_iter_with_distance_2(&center).take(1) {
             if dist_2 > 20_f64.powi(2) {
                 break;
             }
             let orient = orientation_diff(&line, &nn.line);
 
             if orient < 0.01 {
-                if !first {
-                    write!(output, ",")?;
-                }
-                first = false;
-
                 let from = laea::backward(Point3035::new(center[0], center[1]));
                 let np = nn.line.nearest_point(&center);
                 let to = laea::backward(Point3035::new(np[0], np[1]));
-                write!(
-                    output,
-                    "\n{{\"type\": \"Feature\", \
-                       \"properties\": {{\
-                       \"number_empir\": {number_empir},\
-                       \"number_sim\": {number_sim},\
-                       \"len\": {length}\
-                       }}, \
-                       \"geometry\": {{\
-                         \"type\": \"LineString\", \
-                         \"coordinates\": [[{a_lon:.6}, {a_lat:.6}], [{b_lon:.6}, {b_lat:.6}]]}}}}",
-                    number_empir = nn.number,
-                    number_sim = edge.number,
-                    length = dist_2.sqrt(),
-                    a_lon = from.lon(),
-                    a_lat = from.lat(),
-                    b_lon = to.lon(),
-                    b_lat = to.lat(),
-                )?;
+                {
+                    let mut feat = writer.add_line_string(from, to)?;
+                    feat.add_property("number_empir", nn.number)?;
+                    feat.add_property("number_sim", edge.number)?;
+                    feat.add_property("length", dist_2.sqrt())?;
+                    feat.finish()?;
+                }
                 break;
             }
         }
     }
 
-    // Properly end the GeoJSON file
-    output.write(b"\n]}")?;
-    output.flush()?;
+    writer.finish()?;
 
     Ok(())
 }
