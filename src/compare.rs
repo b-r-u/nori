@@ -15,6 +15,7 @@ use crate::network;
 
 
 /// A line segment that can be inserted into an RTree.
+#[derive(Clone, Debug)]
 pub struct Segment {
     line: Line<[f64; 2]>,
     number: f64,
@@ -26,6 +27,10 @@ impl Segment {
             line: Line::new([a.coords.0, a.coords.1], [b.coords.0, b.coords.1]),
             number,
         }
+    }
+
+    fn center(&self) -> [f64;2] {
+        line_center(&self.line)
     }
 }
 
@@ -83,49 +88,61 @@ fn line_center(line: &Line<[f64; 2]>) -> [f64;2] {
     ]
 }
 
-fn edge_as_line(edge: &network::Edge) -> Line<[f64; 2]> {
-    let a = laea::forward(edge.a);
-    let b = laea::forward(edge.b);
-    Line::new([a.coords.0, a.coords.1], [b.coords.0, b.coords.1])
+fn line_rotate_90(line: &Line<[f64; 2]>) -> Line<[f64;2]> {
+    let dx = line.to[0] - line.from[0];
+    let dy = line.to[1] - line.from[1];
+    Line::new(line.from, [line.from[0] + dy, line.from[1] - dx])
+}
+
+fn point_to_4326(point: [f64;2]) -> Point4326 {
+    laea::backward(Point3035::new(point[0], point[1]))
 }
 
 pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_property: &str)
     -> anyhow::Result<()>
 {
+    // Build R-Trees for efficient spatial lookups
     let reference_traffic = geojson_to_rtree(&geojson_path, number_property)
         .with_context(
             || format!("Failed to read GeoJSON file {:?}", geojson_path.as_ref().display())
         )?;
     println!("Built reference RTree with {} segments", reference_traffic.size());
+
     let simulated_traffic = network_to_rtree(net);
     println!("Built simulated RTree with {} segments", simulated_traffic.size());
 
     let mut writer = GeoJsonWriter::from_path("connections.geojson")?;
 
-    for edge in net.edges() {
-        if edge.number == 0 {
-            continue;
-        }
-        let line = edge_as_line(&edge);
-        let center = line_center(&line);
-        for (nn, dist_2) in reference_traffic.nearest_neighbor_iter_with_distance_2(&center).take(1) {
-            if dist_2 > 20_f64.powi(2) {
-                break;
-            }
-            let orient = orientation_diff(&line, &nn.line);
+    for ref_segment in &reference_traffic {
+        let matches = find_matching_segments(&ref_segment, None, &simulated_traffic, 20_f64.powi(2));
 
-            if orient < 0.01 {
-                let from = laea::backward(Point3035::new(center[0], center[1]));
-                let np = nn.line.nearest_point(&center);
-                let to = laea::backward(Point3035::new(np[0], np[1]));
+        let all_good = matches.iter().all(|sim_match| {
+            if sim_match.orientation_diff > 0.01 || sim_match.connection_90_diff > 0.01 {
+                // Discard segment if orientation is too different or connection angle
+                // is not close to 90°.
+                return false;
+            }
+            // Reverse lookup
+            let rev_matches = find_matching_segments(&sim_match.to_segment, Some(sim_match.to_point), &reference_traffic, 20_f64.powi(2));
+            if rev_matches.len() > 1 {
+                // Discard this segment if it could also fit somewhere else
+                //TODO loosen this restriction a little bit
+                return false;
+            }
+            true
+        });
+
+        if all_good {
+            for m in matches {
+                let from = point_to_4326(m.from_point);
+                let to = point_to_4326(m.to_point);
                 {
                     let mut feat = writer.add_line_string(from, to)?;
-                    feat.add_property("number_empir", nn.number)?;
-                    feat.add_property("number_sim", edge.number)?;
-                    feat.add_property("length", dist_2.sqrt())?;
+                    feat.add_property("number_ref", m.from_segment.number)?;
+                    feat.add_property("number_sim", m.to_segment.number)?;
+                    feat.add_property("length", m.distance)?;
                     feat.finish()?;
                 }
-                break;
             }
         }
     }
@@ -133,6 +150,45 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
     writer.finish()?;
 
     Ok(())
+}
+
+struct SegmentMatch {
+    from_segment: Segment,
+    from_point: [f64;2],
+    to_segment: Segment,
+    to_point: [f64;2],
+    distance: f64,
+    orientation_diff: f64,
+    connection_90_diff: f64,
+}
+
+fn find_matching_segments(
+    segment: &Segment,
+    segment_point: Option<[f64;2]>,
+    rtree: &RTree<Segment>,
+    max_squared_dist: f64,
+) -> Vec<SegmentMatch>
+{
+    let point = segment_point.unwrap_or_else(|| segment.center());
+    let mut segments = vec![];
+    for (nn, dist_2) in rtree.nearest_neighbor_iter_with_distance_2(&point) {
+        if dist_2 > max_squared_dist {
+            break;
+        }
+        let orient_diff = orientation_diff(&segment.line, &nn.line);
+        let connection = Line::new(point, nn.line.nearest_point(&point));
+
+        segments.push(SegmentMatch {
+            from_segment: segment.clone(),
+            from_point: connection.from,
+            to_segment: nn.clone(),
+            to_point: connection.to,
+            distance: dist_2.sqrt(),
+            orientation_diff: orient_diff,
+            connection_90_diff: orientation_diff(&segment.line, &line_rotate_90(&connection)),
+        });
+    }
+    segments
 }
 
 pub fn network_to_rtree(network: &network::Network) -> RTree<Segment> {
