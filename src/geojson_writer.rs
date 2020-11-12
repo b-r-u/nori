@@ -64,6 +64,30 @@ impl<W: Write> GeoJsonWriter<W> {
         })
     }
 
+    pub fn add_point(&mut self, coord: Point4326) -> anyhow::Result<FeatureWriter<W>> {
+        if self.is_first_feature {
+            self.is_first_feature = false;
+        } else {
+            write!(self.writer, ",")?;
+        }
+        write!(
+            self.writer,
+            "\n{{\"type\": \"Feature\", \
+               \"geometry\": {{\
+                 \"type\": \"Point\", \
+                 \"coordinates\": [{lon:.6}, {lat:.6}]}}, \
+               \"properties\": {{\
+             ",
+            lon = coord.lon(),
+            lat = coord.lat(),
+        )?;
+        Ok(FeatureWriter {
+            gjwriter: self,
+            is_first: true,
+            finished: false,
+        })
+    }
+
     pub fn finish(mut self) -> anyhow::Result<()> {
         self.mut_finish()
     }

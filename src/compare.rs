@@ -9,6 +9,7 @@ use geojson::GeoJson;
 use geomatic::{laea, Point3035, Point4326};
 use rstar::primitives::Line;
 use rstar::{AABB, PointDistance, RTree, RTreeObject};
+use serde::Serialize;
 
 use crate::geojson_writer::GeoJsonWriter;
 use crate::network;
@@ -98,6 +99,13 @@ fn point_to_4326(point: [f64;2]) -> Point4326 {
     laea::backward(Point3035::new(point[0], point[1]))
 }
 
+#[derive(Serialize)]
+struct CsvRecord {
+    reference_traffic: f64,
+    simulated_traffic: f64,
+    num_sim_segments: usize,
+}
+
 pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_property: &str)
     -> anyhow::Result<()>
 {
@@ -112,6 +120,7 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
     println!("Built simulated RTree with {} segments", simulated_traffic.size());
 
     let mut writer = GeoJsonWriter::from_path("connections.geojson")?;
+    let mut csv_writer = csv::Writer::from_path("comparison.csv")?;
 
     for ref_segment in &reference_traffic {
         let matches = find_matching_segments(&ref_segment, None, &simulated_traffic, 20_f64.powi(2));
@@ -133,7 +142,11 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
         });
 
         if all_good {
-            for m in matches {
+            // Sum numbers of each contributing segment. One reference segment corresponds to one
+            // or more simulated segments as the simulated network always has more detail.
+            let mut sim_number = 0.0;
+            for m in &matches {
+                sim_number += m.to_segment.number;
                 let from = point_to_4326(m.from_point);
                 let to = point_to_4326(m.to_point);
                 {
@@ -144,10 +157,28 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
                     feat.finish()?;
                 }
             }
+
+            {
+                let mut feat = writer.add_point(point_to_4326(ref_segment.center()))?;
+                feat.add_property("number_ref", ref_segment.number)?;
+                feat.add_property("number_sim", sim_number)?;
+                feat.add_property("diff", sim_number - ref_segment.number)?;
+                feat.add_property("number_connections", matches.len())?;
+                feat.finish()?;
+            }
+
+            if ref_segment.number > 0.0 && sim_number > 0.0 {
+                csv_writer.serialize(CsvRecord {
+                    reference_traffic: ref_segment.number,
+                    simulated_traffic: sim_number,
+                    num_sim_segments: matches.len(),
+                })?;
+            }
         }
     }
 
     writer.finish()?;
+    csv_writer.flush()?;
 
     Ok(())
 }
