@@ -39,6 +39,9 @@ impl RoutingMachine {
         let json_value: serde_json::Value = serde_json::from_str(&resp)?;
         let nodes_array = &json_value["routes"][0]["legs"][0]["annotation"]["nodes"];
         let node_ids = Vec::<_>::deserialize(nodes_array)?;
+        let distance = json_value["routes"][0]["distance"]
+            .as_f64()
+            .ok_or_else(|| anyhow::anyhow!("Route has no 'distance' field"))?;
 
         let conv = |c: f64| {(c * 10e6) as i32};
 
@@ -46,6 +49,7 @@ impl RoutingMachine {
             start_coord: (conv(a.lat()), conv(a.lon())),
             end_coord: (conv(b.lat()), conv(b.lon())),
             node_ids,
+            distance,
         };
 
         Ok(route)

@@ -14,6 +14,7 @@ pub struct Route {
     pub start_coord: LatLon,
     pub end_coord: LatLon,
     pub node_ids: Vec<OsmNodeId>,
+    pub distance: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -40,7 +41,7 @@ impl RouteCollectionWriter<File> {
         // write header
         let header = RouteCollectionHeader {
             major_version: 0,
-            minor_version: 1,
+            minor_version: 2,
             osrm_file: osrm_file.into(),
             scenario: scenario.into(),
             number_of_routes: 0,
