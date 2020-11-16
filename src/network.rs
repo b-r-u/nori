@@ -3,7 +3,6 @@ use std::path::Path;
 
 use geomatic::{laea, Point3035, Point4326};
 use osrmreader::{Entry, OsrmReader};
-use raqote::DrawTarget;
 use serde::{Serialize, Deserialize};
 
 use crate::bounding_box::BoundingBox;
@@ -164,26 +163,14 @@ impl Network {
     }
 
     /// Render the network as an image.
-    pub fn render_image(&self, bounds: BoundingBox, width: i32, height: i32)
-        -> DrawTarget
+    pub fn render_image(&self, bounds: BoundingBox, width: u32, height: u32)
+        -> tiny_skia::Canvas
     {
-        let mut dt = DrawTarget::new(width, height);
-        dt.fill_rect(
-            0.0,
-            0.0,
-            width as f32,
-            height as f32,
-            &raqote::Source::Solid(raqote::SolidSource {
-                r: 0xff,
-                g: 0xff,
-                b: 0xff,
-                a: 0xff,
-            }),
-            &raqote::DrawOptions::new()
-        );
+        let mut canvas = tiny_skia::Canvas::new(width, height).unwrap();
+        canvas.pixmap.fill(tiny_skia::Color::WHITE);
 
         if self.edges_map.is_empty() {
-            return dt;
+            return canvas;
         }
 
         let bounds_3035 = bounds.get_3035_bounds();
@@ -232,6 +219,11 @@ impl Network {
             s2l(0,69,41),
         ];
         let gradient = palette::Gradient::new(colors);
+        let mut paint = tiny_skia::Paint::default();
+        paint.anti_alias = true;
+        let mut stroke = tiny_skia::Stroke::default();
+        stroke.width = 4.0;
+        stroke.line_cap = tiny_skia::LineCap::Round;
 
         let mut edges: Vec<_> = self.edges().filter(|e| e.number > 0).collect();
         edges.sort_by_key(|e| e.number);
@@ -239,47 +231,33 @@ impl Network {
         for edge in edges {
             let a: Point3035 = laea::forward(edge.a);
             let b: Point3035 = laea::forward(edge.b);
-            let mut pb = raqote::PathBuilder::new();
-            pb.move_to(
-                (offset_x + (a.coords.0 - bounds_3035.sw.coords.0) * scale) as f32,
-                (offset_y + (bounds_3035.ne.coords.1 - a.coords.1) * scale) as f32,
-            );
-            pb.line_to(
-                (offset_x + (b.coords.0 - bounds_3035.sw.coords.0) * scale) as f32,
-                (offset_y + (bounds_3035.ne.coords.1 - b.coords.1) * scale) as f32,
-            );
-            let path = pb.finish();
+            let path = {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(
+                    (offset_x + (a.coords.0 - bounds_3035.sw.coords.0) * scale) as f32,
+                    (offset_y + (bounds_3035.ne.coords.1 - a.coords.1) * scale) as f32,
+                );
+                pb.line_to(
+                    (offset_x + (b.coords.0 - bounds_3035.sw.coords.0) * scale) as f32,
+                    (offset_y + (bounds_3035.ne.coords.1 - b.coords.1) * scale) as f32,
+                );
+                pb.finish().unwrap()
+            };
 
             let c = palette::Srgb::from_linear(gradient.get(edge.number as f32 / max_number as f32));
 
-            dt.stroke(
-                &path,
-                &raqote::Source::Solid(raqote::SolidSource {
-                    r: (c.red * 255.0) as u8,
-                    g: (c.green * 255.0) as u8,
-                    b: (c.blue * 255.0) as u8,
-                    a: 0xff,
-                }),
-                &raqote::StrokeStyle {
-                    cap: raqote::LineCap::Round,
-                    join: raqote::LineJoin::Round,
-                    width: 2.0,
-                    miter_limit: 2.0,
-                    dash_array: vec![],
-                    dash_offset: 0.0,
-                },
-                &raqote::DrawOptions::new()
-            );
+            paint.set_color(tiny_skia::Color::from_rgba(c.red, c.green, c.blue, 1.0).unwrap());
+            canvas.stroke_path(&path, &paint, &stroke);
         }
-        dt
+        canvas
     }
 
     /// Render an image of the network and save as a PNG file.
-    pub fn write_png<P: AsRef<Path>>(&self, path: P, bounds: BoundingBox, width: i32, height: i32)
+    pub fn write_png<P: AsRef<Path>>(&self, path: P, bounds: BoundingBox, width: u32, height: u32)
         -> Result<(), std::io::Error>
     {
-        let dt = self.render_image(bounds, width, height);
-        dt.write_png(path)?;
+        let canvas = self.render_image(bounds, width, height);
+        canvas.pixmap.save_png(path)?;
         Ok(())
     }
 }
