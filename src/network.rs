@@ -50,7 +50,7 @@ impl Network {
                 continue;
             }
 
-            let mut ls = writer.add_line_string(edge.a, edge.b)?;
+            let mut ls = writer.add_line_string(&[edge.a, edge.b])?;
             ls.add_property("number", edge.number)?;
             ls.add_property("a_index", edge.a_index)?;
             ls.add_property("b_index", edge.b_index)?;

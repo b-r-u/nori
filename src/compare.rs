@@ -150,7 +150,7 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
                 let from = point_to_4326(m.from_point);
                 let to = point_to_4326(m.to_point);
                 {
-                    let mut feat = writer.add_line_string(from, to)?;
+                    let mut feat = writer.add_line_string(&[from, to])?;
                     feat.add_property("number_ref", m.from_segment.number)?;
                     feat.add_property("number_sim", m.to_segment.number)?;
                     feat.add_property("length", m.distance)?;

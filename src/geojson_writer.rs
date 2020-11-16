@@ -38,25 +38,36 @@ impl<W: Write> GeoJsonWriter<W> {
         })
     }
 
-    pub fn add_line_string(&mut self, coord_a: Point4326, coord_b: Point4326) -> anyhow::Result<FeatureWriter<W>> {
+    pub fn add_line_string(&mut self, coords: &[Point4326]) -> anyhow::Result<FeatureWriter<W>> {
         if self.is_first_feature {
             self.is_first_feature = false;
         } else {
             write!(self.writer, ",")?;
         }
+
         write!(
             self.writer,
             "\n{{\"type\": \"Feature\", \
                \"geometry\": {{\
                  \"type\": \"LineString\", \
-                 \"coordinates\": [[{a_lon:.6}, {a_lat:.6}], [{b_lon:.6}, {b_lat:.6}]]}}, \
-               \"properties\": {{\
+                 \"coordinates\": [\
              ",
-            a_lon = coord_a.lon(),
-            a_lat = coord_a.lat(),
-            b_lon = coord_b.lon(),
-            b_lat = coord_b.lat(),
         )?;
+
+        for (i, point) in coords.iter().enumerate() {
+            if i > 0 {
+                write!(self.writer, ",")?;
+            }
+            write!(
+                self.writer,
+                "[{lon:.6}, {lat:.6}]",
+                lon = point.lon(),
+                lat = point.lat(),
+            )?;
+        }
+
+        write!(self.writer, "]}}, \"properties\": {{")?;
+
         Ok(FeatureWriter {
             gjwriter: self,
             is_first: true,
