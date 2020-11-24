@@ -8,6 +8,7 @@ mod bounding_box;
 mod compare;
 mod geojson_writer;
 mod network;
+mod polyline;
 mod route;
 mod routing_machine;
 mod sampling;
@@ -145,6 +146,7 @@ fn run(matches: clap::ArgMatches) -> anyhow::Result<()> {
             .with_context(|| format!(
                 "Failed to read *.osrm file {:?}", osrm_path
             ))?;
+
         let mut writer = RouteCollectionWriter::new(
             routes_path,
             osrm_path,

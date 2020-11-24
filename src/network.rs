@@ -7,10 +7,15 @@ use serde::{Serialize, Deserialize};
 
 use crate::bounding_box::BoundingBox;
 use crate::geojson_writer::GeoJsonWriter;
+use crate::polyline::PolylineCollection;
 
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct OsmNodeId(i64);
+
+/// An undefined OSM edge.
+/// TODO Maybe use NonZeroI64 for OsmNodeId?
+pub const UNDEF_OSM_EDGE: (OsmNodeId, OsmNodeId) = (OsmNodeId(0), OsmNodeId(0));
 
 pub struct Network {
     nodes_vec: Vec<(OsmNodeId, i32, i32)>,
@@ -28,6 +33,8 @@ pub struct Edge {
     pub a_index: u32,
     /// Index of second point
     pub b_index: u32,
+    /// OpenStreetMap node ids
+    pub osm_ids: (OsmNodeId, OsmNodeId),
 }
 
 impl Network {
@@ -64,7 +71,7 @@ impl Network {
 
 
     pub fn edges(&self) -> impl Iterator<Item=Edge> + '_ {
-        self.edges_map.values().map(move |&(a_index, b_index, number)| {
+        self.edges_map.iter().map(move |(&osm_ids, &(a_index, b_index, number))| {
             let source = self.nodes_vec[a_index as usize];
             let target = self.nodes_vec[b_index as usize];
             Edge {
@@ -73,6 +80,7 @@ impl Network {
                 number: number,
                 a_index,
                 b_index,
+                osm_ids,
             }
         })
     }
@@ -259,5 +267,9 @@ impl Network {
         let canvas = self.render_image(bounds, width, height);
         canvas.pixmap.save_png(path)?;
         Ok(())
+    }
+
+    pub fn build_polylines(&self) -> PolylineCollection {
+        PolylineCollection::new(self)
     }
 }

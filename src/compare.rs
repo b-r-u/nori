@@ -13,19 +13,22 @@ use serde::Serialize;
 
 use crate::geojson_writer::GeoJsonWriter;
 use crate::network;
+use crate::network::{OsmNodeId, UNDEF_OSM_EDGE};
 
 
 /// A line segment that can be inserted into an RTree.
 #[derive(Clone, Debug)]
 pub struct Segment {
     line: Line<[f64; 2]>,
+    osm_ids: (OsmNodeId, OsmNodeId),
     number: f64,
 }
 
 impl Segment {
-    fn new(a: Point3035, b: Point3035, number: f64) -> Self {
+    fn new(a: Point3035, b: Point3035, osm_ids: (OsmNodeId, OsmNodeId), number: f64) -> Self {
         Segment {
             line: Line::new([a.coords.0, a.coords.1], [b.coords.0, b.coords.1]),
+            osm_ids,
             number,
         }
     }
@@ -119,6 +122,10 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
     let simulated_traffic = network_to_rtree(net);
     println!("Built simulated RTree with {} segments", simulated_traffic.size());
 
+    let polylines = net.build_polylines();
+    println!("Built {} polylines", polylines.polylines.len());
+    polylines.write_to_geojson("polylines.geojson")?;
+
     let mut writer = GeoJsonWriter::from_path("connections.geojson")?;
     let mut csv_writer = csv::Writer::from_path("comparison.csv")?;
 
@@ -140,6 +147,22 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
             }
             true
         });
+
+        let poly: Option<Vec<u32>> = matches.iter()
+            .map(|sim_match| polylines.lookup_edge(sim_match.to_segment.osm_ids))
+            .collect();
+
+        let poly_ok = match poly {
+            None => false,
+            Some(mut vec) => {
+                vec.sort();
+                vec.windows(2).fold(true, |acc, win| acc && (win[0] != win[1]))
+            },
+        };
+
+        if !poly_ok {
+            println!("{:?}", ref_segment);
+        }
 
         if all_good {
             // Sum numbers of each contributing segment. One reference segment corresponds to one
@@ -164,6 +187,7 @@ pub fn compare<P: AsRef<Path>>(net: &network::Network, geojson_path: P, number_p
                 feat.add_property("number_sim", sim_number)?;
                 feat.add_property("diff", sim_number - ref_segment.number)?;
                 feat.add_property("number_connections", matches.len())?;
+                feat.add_property("poly_ok", poly_ok)?;
                 feat.finish()?;
             }
 
@@ -228,6 +252,7 @@ pub fn network_to_rtree(network: &network::Network) -> RTree<Segment> {
         .map(|edge| Segment::new(
             laea::forward(edge.a),
             laea::forward(edge.b),
+            edge.osm_ids,
             edge.number as f64,
         ))
         .collect();
@@ -263,7 +288,7 @@ pub fn geojson_to_rtree<P: AsRef<Path>>(geojson_path: P, number_property: &str)
                         if point.len() >= 2 {
                             let current_point = laea::forward(Point4326::new(point[1], point[0]));
                             if let Some(last_point) = last_point {
-                                segments.push(Segment::new(last_point, current_point, number));
+                                segments.push(Segment::new(last_point, current_point, UNDEF_OSM_EDGE, number));
                             }
                             last_point = Some(current_point);
                         }
