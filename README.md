@@ -3,6 +3,8 @@ NORI
 
 Estimate average daily traffic on a road network by sampling a distribution of shortest paths.
 
+![An animation of the road network of Berlin](https://b-r-u.org/nori/nori_animation_berlin.gif "The effect of
+changing the distribution of trip lengths on the road network of Berlin")
 
 ## Installation
 
