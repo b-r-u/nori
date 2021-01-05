@@ -13,28 +13,61 @@ use crate::polyline::PolylineCollection;
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub struct OsmNodeId(i64);
 
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct NodeId(u32);
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
+pub struct EdgeId(u32);
+
 /// An undefined OSM edge.
 /// TODO Maybe use NonZeroI64 for OsmNodeId?
 pub const UNDEF_OSM_EDGE: (OsmNodeId, OsmNodeId) = (OsmNodeId(0), OsmNodeId(0));
 
-pub struct Network {
-    nodes_vec: Vec<(OsmNodeId, i32, i32)>,
-    edges_map: HashMap<(OsmNodeId, OsmNodeId), (u32, u32, usize)>,
+
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct Node {
+    osm_node_id: OsmNodeId,
+    raw_lat: i32,
+    raw_lon: i32,
 }
 
-pub struct Edge {
+//TODO rename struct
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+struct Edge {
+    source_node_id: NodeId,
+    target_node_id: NodeId,
+    number: usize,
+}
+
+pub struct Network {
+    nodes_vec: Vec<Node>,
+    edges_vec: Vec<Edge>,
+    edges_map: HashMap<(OsmNodeId, OsmNodeId), EdgeId>,
+}
+
+pub struct FullEdge {
     /// first point
-    pub a: Point4326,
+    pub a: Node,
     /// second point
-    pub b: Point4326,
+    pub b: Node,
     /// Number of routes that passed trough this edge
     pub number: usize,
-    /// Index of first point into node vector
-    pub a_index: u32,
-    /// Index of second point
-    pub b_index: u32,
-    /// OpenStreetMap node ids
-    pub osm_ids: (OsmNodeId, OsmNodeId),
+}
+
+impl Node {
+    pub fn as_point4326(&self) -> Point4326 {
+        Point4326::new(self.raw_lat as f64 * 0.000001, self.raw_lon as f64 * 0.000001)
+    }
+
+    pub fn as_point3035(&self) -> Point3035 {
+        laea::forward(self.as_point4326())
+    }
+}
+
+impl FullEdge {
+    pub fn osm_ids(&self) -> (OsmNodeId, OsmNodeId) {
+        (self.a.osm_node_id, self.b.osm_node_id)
+    }
 }
 
 impl Network {
@@ -42,7 +75,7 @@ impl Network {
         for win in nodes.windows(2) {
             if win.len() == 2 {
                 match self.edges_map.get_mut(&(win[0], win[1])) {
-                    Some(val) => val.2 += 1,
+                    Some(edge_index) => self.edges_vec[edge_index.0 as usize].number += 1,
                     None => {},//println!("lookup fail ({}, {})", win[0], win[1]),
                 }
             }
@@ -57,10 +90,8 @@ impl Network {
                 continue;
             }
 
-            let mut ls = writer.add_line_string(&[edge.a, edge.b])?;
+            let mut ls = writer.add_line_string(&[edge.a.as_point4326(), edge.b.as_point4326()])?;
             ls.add_property("number", edge.number)?;
-            ls.add_property("a_index", edge.a_index)?;
-            ls.add_property("b_index", edge.b_index)?;
             ls.finish()?;
         }
 
@@ -69,27 +100,24 @@ impl Network {
         Ok(())
     }
 
-
-    pub fn edges(&self) -> impl Iterator<Item=Edge> + '_ {
-        self.edges_map.iter().map(move |(&osm_ids, &(a_index, b_index, number))| {
-            let source = self.nodes_vec[a_index as usize];
-            let target = self.nodes_vec[b_index as usize];
-            Edge {
-                a: Point4326::new(source.1 as f64 * 0.000001, source.2 as f64 * 0.000001),
-                b: Point4326::new(target.1 as f64 * 0.000001, target.2 as f64 * 0.000001),
-                number: number,
-                a_index,
-                b_index,
-                osm_ids,
+    pub fn edges(&self) -> impl Iterator<Item=FullEdge> + '_ {
+        self.edges_map.iter().map(move |(_, &edge_index)| {
+            let edge = self.edges_vec[edge_index.0 as usize];
+            let source = self.nodes_vec[edge.source_node_id.0 as usize];
+            let target = self.nodes_vec[edge.target_node_id.0 as usize];
+            FullEdge {
+                a: source,
+                b: target,
+                number: edge.number,
             }
         })
     }
-
 
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Network, std::io::Error> {
         let f = std::fs::File::open(path)?;
         let mut reader = OsrmReader::new(f);
         let mut nodes_vec = vec![];
+        let mut edges_vec = vec![];
         let mut edges_map = HashMap::new();
 
         for entry in reader.entries()? {
@@ -98,16 +126,29 @@ impl Network {
                     // Read nodes
                     for n in nodes {
                         let n = n?;
-                        nodes_vec.push((OsmNodeId(n.node_id), n.raw_latitude, n.raw_longitude))
+                        nodes_vec.push(Node {
+                            osm_node_id: OsmNodeId(n.node_id),
+                            raw_lat: n.raw_latitude,
+                            raw_lon: n.raw_longitude,
+                        })
                     }
                 },
                 Entry::Edges(edges) => {
                     // Read edges
+                    let mut edge_index = 0;
                     for e in edges {
                         let e = e?;
                         let a = nodes_vec[e.source_node_index as usize];
                         let b = nodes_vec[e.target_node_index as usize];
-                        edges_map.insert((a.0, b.0), (e.source_node_index, e.target_node_index, 0));
+                        edges_map.insert((a.osm_node_id, b.osm_node_id), EdgeId(edge_index));
+                        edges_vec.push(
+                            Edge {
+                                source_node_id: NodeId(e.source_node_index),
+                                target_node_id: NodeId(e.target_node_index),
+                                number: 0,
+                            }
+                        );
+                        edge_index += 1;
                     }
                 },
                 _ => {},
@@ -118,6 +159,7 @@ impl Network {
 
         Ok(Network {
             nodes_vec,
+            edges_vec,
             edges_map,
         })
     }
@@ -131,36 +173,40 @@ impl Network {
         let mut max_y = 0.0;
 
         if let Some(edge) = edges_iter.next() {
-            min_x = edge.a.lon().min(edge.b.lon());
-            min_y = edge.a.lat().min(edge.b.lat());
-            max_x = edge.a.lon().max(edge.b.lon());
-            max_y = edge.a.lat().max(edge.b.lat());
+            let a = edge.a.as_point4326();
+            let b = edge.b.as_point4326();
+            min_x = a.lon().min(b.lon());
+            min_y = a.lat().min(b.lat());
+            max_x = a.lon().max(b.lon());
+            max_y = a.lat().max(b.lat());
         }
 
         for edge in edges_iter {
-            if edge.a.lon() < min_x {
-                min_x = edge.a.lon();
+            let a = edge.a.as_point4326();
+            let b = edge.b.as_point4326();
+            if a.lon() < min_x {
+                min_x = a.lon();
             }
-            if edge.b.lon() < min_x {
-                min_x = edge.b.lon();
+            if b.lon() < min_x {
+                min_x = b.lon();
             }
-            if edge.a.lat() < min_y {
-                min_y = edge.a.lat();
+            if a.lat() < min_y {
+                min_y = a.lat();
             }
-            if edge.b.lat() < min_y {
-                min_y = edge.b.lat();
+            if b.lat() < min_y {
+                min_y = b.lat();
             }
-            if edge.a.lon() > max_x {
-                max_x = edge.a.lon();
+            if a.lon() > max_x {
+                max_x = a.lon();
             }
-            if edge.b.lon() > max_x {
-                max_x = edge.b.lon();
+            if b.lon() > max_x {
+                max_x = b.lon();
             }
-            if edge.a.lat() > max_y {
-                max_y = edge.a.lat();
+            if a.lat() > max_y {
+                max_y = a.lat();
             }
-            if edge.b.lat() > max_y {
-                max_y = edge.b.lat();
+            if b.lat() > max_y {
+                max_y = b.lat();
             }
         }
 
@@ -237,8 +283,8 @@ impl Network {
         edges.sort_by_key(|e| e.number);
 
         for edge in edges {
-            let a: Point3035 = laea::forward(edge.a);
-            let b: Point3035 = laea::forward(edge.b);
+            let a: Point3035 = edge.a.as_point3035();
+            let b: Point3035 = edge.b.as_point3035();
             let path = {
                 let mut pb = tiny_skia::PathBuilder::new();
                 pb.move_to(

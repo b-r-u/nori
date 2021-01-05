@@ -250,9 +250,9 @@ pub fn network_to_rtree(network: &network::Network) -> RTree<Segment> {
     let segments: Vec<Segment> = network.edges()
         .filter(|edge| edge.number > 0)
         .map(|edge| Segment::new(
-            laea::forward(edge.a),
-            laea::forward(edge.b),
-            edge.osm_ids,
+            edge.a.as_point3035(),
+            edge.b.as_point3035(),
+            edge.osm_ids(),
             edge.number as f64,
         ))
         .collect();

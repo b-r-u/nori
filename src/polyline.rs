@@ -34,12 +34,12 @@ impl PolylineCollection {
         let adja = {
             let mut adja: HashMap<OsmNodeId, (Point4326, Vec<OsmNodeId>)> = HashMap::new();
             for edge in net.edges() {
-                adja.entry(edge.osm_ids.0)
-                    .and_modify(|(_, v)| { v.push(edge.osm_ids.1) })
-                    .or_insert_with(|| (edge.a, vec![edge.osm_ids.1]));
-                adja.entry(edge.osm_ids.1)
-                    .and_modify(|(_, v)| { v.push(edge.osm_ids.0) })
-                    .or_insert_with(|| (edge.b, vec![edge.osm_ids.0]));
+                adja.entry(edge.osm_ids().0)
+                    .and_modify(|(_, v)| { v.push(edge.osm_ids().1) })
+                    .or_insert_with(|| (edge.a.as_point4326(), vec![edge.osm_ids().1]));
+                adja.entry(edge.osm_ids().1)
+                    .and_modify(|(_, v)| { v.push(edge.osm_ids().0) })
+                    .or_insert_with(|| (edge.b.as_point4326(), vec![edge.osm_ids().0]));
             }
             adja
         };
