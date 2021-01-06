@@ -25,9 +25,8 @@ See [here](https://github.com/Project-OSRM/osrm-backend/wiki/Building-OSRM) for 
 
 ```bash
 sudo apt install build-essential git cmake pkg-config \
-libbz2-dev libstxxl-dev libstxxl1v5 libxml2-dev \
-libzip-dev libboost-all-dev lua5.2 liblua5.2-dev libtbb-dev \
-libluabind-dev libluabind0.9.1v5
+libbz2-dev libxml2-dev libzip-dev libboost-all-dev \
+lua5.2 liblua5.2-dev libtbb-dev
 ```
 
 * Compile
