@@ -42,7 +42,8 @@ struct Edge {
 pub struct Network {
     nodes_vec: Vec<Node>,
     edges_vec: Vec<Edge>,
-    edges_map: HashMap<(OsmNodeId, OsmNodeId), EdgeId>,
+    edges_map: HashMap<(NodeId, NodeId), EdgeId>,
+    osm_2_node_id: HashMap<OsmNodeId, NodeId>,
 }
 
 pub struct FullEdge {
@@ -73,8 +74,16 @@ impl FullEdge {
 impl Network {
     pub fn bump_edges(&mut self, nodes: &[OsmNodeId]) {
         for win in nodes.windows(2) {
-            if win.len() == 2 {
-                match self.edges_map.get_mut(&(win[0], win[1])) {
+            let a_id = self.osm_2_node_id.get(&win[0]);
+            let b_id = self.osm_2_node_id.get(&win[1]);
+            if let (Some(&a_id), Some(&b_id)) = (a_id, b_id) {
+                // look for edge a -> b
+                if let Some(edge_index) = self.edges_map.get_mut(&(a_id, b_id)) {
+                    self.edges_vec[edge_index.0 as usize].number += 1;
+                    continue;
+                }
+                // look for reversed edge b -> a
+                match self.edges_map.get_mut(&(b_id, a_id)) {
                     Some(edge_index) => self.edges_vec[edge_index.0 as usize].number += 1,
                     None => {},//println!("lookup fail ({}, {})", win[0], win[1]),
                 }
@@ -101,8 +110,7 @@ impl Network {
     }
 
     pub fn edges(&self) -> impl Iterator<Item=FullEdge> + '_ {
-        self.edges_map.iter().map(move |(_, &edge_index)| {
-            let edge = self.edges_vec[edge_index.0 as usize];
+        self.edges_vec.iter().map(move |edge| {
             let source = self.nodes_vec[edge.source_node_id.0 as usize];
             let target = self.nodes_vec[edge.target_node_id.0 as usize];
             FullEdge {
@@ -119,6 +127,7 @@ impl Network {
         let mut nodes_vec = vec![];
         let mut edges_vec = vec![];
         let mut edges_map = HashMap::new();
+        let mut osm_2_node_id = HashMap::new();
 
         for entry in reader.entries()? {
             match entry? {
@@ -126,6 +135,7 @@ impl Network {
                     // Read nodes
                     for n in nodes {
                         let n = n?;
+                        osm_2_node_id.insert(OsmNodeId(n.node_id), NodeId(nodes_vec.len() as u32));
                         nodes_vec.push(Node {
                             osm_node_id: OsmNodeId(n.node_id),
                             raw_lat: n.raw_latitude,
@@ -138,13 +148,13 @@ impl Network {
                     let mut edge_index = 0;
                     for e in edges {
                         let e = e?;
-                        let a = nodes_vec[e.source_node_index as usize];
-                        let b = nodes_vec[e.target_node_index as usize];
-                        edges_map.insert((a.osm_node_id, b.osm_node_id), EdgeId(edge_index));
+                        let source_id = NodeId(e.source_node_index);
+                        let target_id = NodeId(e.target_node_index);
+                        edges_map.insert((source_id, target_id), EdgeId(edge_index));
                         edges_vec.push(
                             Edge {
-                                source_node_id: NodeId(e.source_node_index),
-                                target_node_id: NodeId(e.target_node_index),
+                                source_node_id: source_id,
+                                target_node_id: target_id,
                                 number: 0,
                             }
                         );
@@ -155,12 +165,13 @@ impl Network {
             }
         }
 
-        println!("number edges {}", edges_map.len());
+        println!("number edges {}", edges_vec.len());
 
         Ok(Network {
             nodes_vec,
             edges_vec,
             edges_map,
+            osm_2_node_id,
         })
     }
 
