@@ -21,6 +21,7 @@ csv = "1.1"
 geojson = { version = "0.20", default-features = false }
 geomatic = "0.1"
 kdtree = "0.6.0"
+osmpbf = "0.2"
 osrmreader = "0.1"
 palette = { version = "0.5", features = ["std"], default-features = false }
 rand = "0.7"

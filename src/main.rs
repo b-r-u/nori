@@ -9,6 +9,7 @@ mod compare;
 mod geojson_writer;
 mod network;
 mod polyline;
+mod poi;
 mod route;
 mod routing_machine;
 mod sampling;
@@ -113,6 +114,23 @@ fn main() -> anyhow::Result<()> {
                  .required(true)
             )
         )
+        .subcommand(SubCommand::with_name("filter-poi")
+            .about("Read *.osm.pbf file with OpenStreetMap data to filter POIs and write to CSV.")
+            .arg(Arg::with_name("input")
+                 .long("input")
+                 .value_name("FILE")
+                 .help("Sets an input *.osm.pbf file")
+                 .takes_value(true)
+                 .required(true)
+            )
+            .arg(Arg::with_name("output")
+                 .long("output")
+                 .value_name("FILE")
+                 .help("Sets an output *.csv file that includes filtered and clustered POI")
+                 .takes_value(true)
+                 .required(true)
+            )
+        )
         .get_matches();
 
     run(matches)
@@ -194,6 +212,10 @@ fn run(matches: clap::ArgMatches) -> anyhow::Result<()> {
         for (i, route) in reader.enumerate() {
             println!("Route #{}: {} nodes", i + 1, route?.node_ids.len());
         }
+    } else if let Some(matches) = matches.subcommand_matches("filter-poi") {
+        let input = matches.value_of("input").unwrap();
+        let output = matches.value_of("output").unwrap();
+        poi::filter_poi(input, output)?;
     }
 
     Ok(())
