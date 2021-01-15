@@ -6,6 +6,7 @@ use geomatic::Point4326;
 
 mod bounding_box;
 mod compare;
+mod density;
 mod geojson_writer;
 mod network;
 mod polyline;
@@ -100,8 +101,26 @@ fn main() -> anyhow::Result<()> {
                  .takes_value(true)
                  .requires_all(&["max_dist"])
              )
+            .arg(Arg::with_name("complex")
+                 .long("complex")
+                 .help("Use complex sampling that combines different density inputs.")
+                 .takes_value(false)
+                 .requires_all(&["population", "pois"])
+             )
+            .arg(Arg::with_name("population")
+                 .long("population")
+                 .value_name("FILE.csv")
+                 .help("Specify population density as weighted points from the given CSV file.")
+                 .takes_value(true)
+             )
+            .arg(Arg::with_name("pois")
+                 .long("pois")
+                 .value_name("FILE.csv")
+                 .help("Specify POI density as weighted points from the given CSV file.")
+                 .takes_value(true)
+             )
             .group(ArgGroup::with_name("sampling")
-                 .args(&["uniform2d", "weighted"])
+                 .args(&["uniform2d", "weighted", "complex"])
                  .required(true))
         )
         .subcommand(SubCommand::with_name("routes")
@@ -180,6 +199,12 @@ fn run(matches: clap::ArgMatches) -> anyhow::Result<()> {
             let csv_path = matches.value_of("weighted").unwrap();
             let mut sampl = sampling::Weighted::from_csv(csv_path, bounds, max_dist)?;
             sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
+        } else if matches.is_present("complex") {
+            let max_dist: f64 = matches.value_of("max_dist").unwrap().parse::<f64>()?;
+            let population_csv = matches.value_of("population").unwrap();
+            let poi_csv = matches.value_of("pois").unwrap();
+            let mut sampl = sampling::Complex::from_csv(population_csv, poi_csv, bounds, max_dist)?;
+            sample(&mut sampl, number_of_samples, &mut machine, &mut writer, &mut net)?;
         }
 
         writer.finish()?;
@@ -239,8 +264,16 @@ fn sample<S: Sampling>(
 ) -> anyhow::Result<()>
 {
     for i in 0..number_of_samples {
-        let a = sampl.gen_source();
-        let b = sampl.gen_destination(a);
+        let a;
+        let b;
+        loop {
+            let source = sampl.gen_source();
+            if let Some(destination) = sampl.gen_destination(source) {
+                a = source;
+                b = destination;
+                break;
+            }
+        }
 
         println!("{:.2}%, {}: {} {}", (100.0 * (i + 1) as f64) / (number_of_samples as f64), i + 1, a, b);
         let res = machine.find_route(a, b)?;

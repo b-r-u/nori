@@ -13,7 +13,7 @@ struct CsvRecord {
     // y coordinate of raster center, EPSG:3035
     y_mp_100m: u32,
     // weight of this cell
-    weight: f32,
+    weight: u32,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -106,7 +106,7 @@ pub fn filter_poi<P: AsRef<Path>, Q: AsRef<Path>>(osmpbf_path: P, csv_output_pat
         csv_writer.serialize(CsvRecord {
             x_mp_100m: cell.x_center,
             y_mp_100m: cell.y_center,
-            weight: weight as f32,
+            weight,
         })?;
     }
 

@@ -1,20 +1,15 @@
-use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 
 use geomatic::{laea, Point4326, Point3035};
-use kdtree::KdTree;
-use kdtree::distance::squared_euclidean;
-use rand::Rng;
-use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
 use crate::bounding_box::BoundingBox;
+use crate::density::DensityClusters;
 
 
 pub trait Sampling {
     fn gen_source(&mut self) -> Point4326;
-    fn gen_destination(&mut self, source: Point4326) -> Point4326;
+    fn gen_destination(&mut self, source: Point4326) -> Option<Point4326>;
 }
 
 pub struct Uniform2D {
@@ -52,23 +47,18 @@ impl Sampling for Uniform2D {
         Point4326::new(lat, lon)
     }
 
-    fn gen_destination(&mut self, source: Point4326) -> Point4326 {
+    fn gen_destination(&mut self, source: Point4326) -> Option<Point4326> {
         let delta = self.sample_circle(self.max_dist);
         let p = laea::forward(source);
         let p = Point3035::new(p.coords.0 + delta.0, p.coords.1 + delta.1);
-        laea::backward(p)
+        Some(laea::backward(p))
     }
 }
 
 
 pub struct Weighted {
     rng: rand::rngs::ThreadRng,
-    dist: rand::distributions::weighted::WeightedIndex<u32>,
-    points: Vec<Point4326>,
-    weights: Vec<u32>,
-    /// A k-d tree with indices into `points` and `weights`.
-    kdtree: KdTree<f64, usize, [f64;2]>,
-    /// maximum distance in meters between source and destination points.
+    density: DensityClusters,
     max_dist: f64,
 }
 
@@ -76,37 +66,9 @@ impl Weighted {
     pub fn from_csv<P: AsRef<Path>>(path: P, bounds: Option<BoundingBox>, max_dist: f64)
         -> anyhow::Result<Self>
     {
-        println!("READ CSV");
-        let buf_reader = BufReader::new(File::open(path)?);
-        let mut rdr = csv::ReaderBuilder::new()
-            .has_headers(true)
-            .from_reader(buf_reader);
-        println!("start reading...");
-        let mut weights: Vec<_> = vec![];
-        let mut points: Vec<Point4326> = vec![];
-        let mut kdtree = KdTree::new(2);
-        for result in rdr.records() {
-            let record = result?;
-            assert_eq!(record.len(), 3);
-            let x: f64 = record.get(0).unwrap().parse()?;
-            let y: f64 = record.get(1).unwrap().parse()?;
-            let weight: u32 = record.get(2).unwrap().parse()?;
-            let p3035 = Point3035::new(x, y);
-            let p4326: Point4326 = laea::backward(p3035);
-            if bounds.is_none() || bounds.unwrap().is_inside(p4326) {
-                kdtree.add([p3035.coords.0, p3035.coords.1], points.len()).unwrap();
-                weights.push(weight);
-                points.push(p4326);
-            }
-        }
-        println!("done reading");
-        let dist = WeightedIndex::new(&weights).unwrap();
         Ok(Weighted {
             rng: rand::thread_rng(),
-            dist,
-            points,
-            weights,
-            kdtree,
+            density: DensityClusters::from_csv(path, bounds)?,
             max_dist,
         })
     }
@@ -114,25 +76,53 @@ impl Weighted {
 
 impl Sampling for Weighted {
     fn gen_source(&mut self) -> Point4326 {
-        self.points[self.dist.sample(&mut self.rng)]
+        self.density.sample_point(&mut self.rng)
     }
 
-    fn gen_destination(&mut self, source: Point4326) -> Point4326 {
-        let source = laea::forward(source);
+    fn gen_destination(&mut self, source: Point4326) -> Option<Point4326> {
+        self.density.sample_point_within(&mut self.rng, source, self.max_dist)
+    }
+}
 
-        // Get point indices within max_distance.
-        // Errors only if the dimension is wrong or a coordinate is not finite.
-        let indices = self.kdtree.within(
-            &[source.coords.0, source.coords.1],
-            // square distance
-            self.max_dist.powi(2),
-            &squared_euclidean,
-        ).unwrap();
 
-        let distribution = WeightedIndex::new(indices.iter().map(|p| self.weights[*p.1])).unwrap();
-        let selected_index = indices[distribution.sample(&mut self.rng)];
-        let destination = self.points[*selected_index.1];
+pub struct Complex {
+    rng: rand::rngs::ThreadRng,
+    /// maximum distance in meters between source and destination points.
+    max_dist: f64,
+    density_population: DensityClusters,
+    density_poi: DensityClusters,
+}
 
-        destination
+impl Complex {
+    pub fn from_csv<P, Q>(population_csv: P, poi_csv: Q, bounds: Option<BoundingBox>, max_dist: f64)
+        -> anyhow::Result<Self>
+        where
+            P: AsRef<Path>,
+            Q: AsRef<Path>,
+    {
+        Ok(Complex {
+            rng: rand::thread_rng(),
+            max_dist,
+            density_population: DensityClusters::from_csv(population_csv, bounds)?,
+            density_poi: DensityClusters::from_csv(poi_csv, bounds)?,
+        })
+    }
+}
+
+impl Sampling for Complex {
+    fn gen_source(&mut self) -> Point4326 {
+        if self.rng.gen::<bool>() {
+            self.density_population.sample_point(&mut self.rng)
+        } else {
+            self.density_poi.sample_point(&mut self.rng)
+        }
+    }
+
+    fn gen_destination(&mut self, source: Point4326) -> Option<Point4326> {
+        if self.rng.gen::<bool>() {
+            self.density_population.sample_point_within(&mut self.rng, source, self.max_dist)
+        } else {
+            self.density_poi.sample_point_within(&mut self.rng, source, self.max_dist)
+        }
     }
 }

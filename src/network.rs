@@ -31,7 +31,6 @@ pub struct Node {
     raw_lon: i32,
 }
 
-//TODO rename struct
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 struct Edge {
     source_node_id: NodeId,
@@ -85,7 +84,7 @@ impl Network {
                 // look for reversed edge b -> a
                 match self.edges_map.get_mut(&(b_id, a_id)) {
                     Some(edge_index) => self.edges_vec[edge_index.0 as usize].number += 1,
-                    None => {},//println!("lookup fail ({}, {})", win[0], win[1]),
+                    None => println!("lookup fail ({:?}, {:?})", win[0], win[1]),
                 }
             }
         }
