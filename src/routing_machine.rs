@@ -1,7 +1,7 @@
 use geomatic::Point4326;
 use serde::de::Deserialize;
 
-use crate::route::Route;
+use crate::route::{LatLon32, Route};
 
 pub struct RoutingMachine {
     client: reqwest::blocking::Client,
@@ -43,11 +43,9 @@ impl RoutingMachine {
             .as_f64()
             .ok_or_else(|| anyhow::anyhow!("Route has no 'distance' field"))?;
 
-        let conv = |c: f64| {(c * 10e6) as i32};
-
         let route = Route {
-            start_coord: (conv(a.lat()), conv(a.lon())),
-            end_coord: (conv(b.lat()), conv(b.lon())),
+            start_coord: LatLon32::new(a.lat(), a.lon()),
+            end_coord: LatLon32::new(b.lat(), b.lon()),
             node_ids,
             distance,
         };

@@ -71,6 +71,12 @@ impl FullEdge {
 }
 
 impl Network {
+    pub fn get_node(&self, osm_node_id: OsmNodeId) -> Option<Node> {
+        self.osm_2_node_id
+            .get(&osm_node_id)
+            .and_then(|id| self.nodes_vec.get(id.0 as usize).copied())
+    }
+
     pub fn bump_edges(&mut self, nodes: &[OsmNodeId]) {
         for win in nodes.windows(2) {
             let a_id = self.osm_2_node_id.get(&win[0]);

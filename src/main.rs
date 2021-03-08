@@ -2,6 +2,7 @@ use std::fs::File;
 use anyhow::Context;
 use clap::{Arg, ArgGroup, App, AppSettings, SubCommand};
 use geomatic::Point4326;
+use serde::Serialize;
 
 
 mod bounding_box;
@@ -232,11 +233,33 @@ fn run(matches: clap::ArgMatches) -> anyhow::Result<()> {
             .with_context(|| format!(
                 "Failed to read the routes file {:?}", routes_path
             ))?;
-        println!("{:?}", reader.header());
+
+        #[derive(Serialize)]
+        struct CsvRecord {
+            num_nodes: usize,
+            distance: f64,
+            distance_bee_line: f64,
+        }
+
+        let mut csv_writer = csv::Writer::from_path("distances.csv")?;
+        let net = Network::from_path(&reader.header().osrm_file)?;
 
         for (i, route) in reader.enumerate() {
-            println!("Route #{}: {} nodes", i + 1, route?.node_ids.len());
+            let route = route?;
+            csv_writer.serialize(CsvRecord {
+                num_nodes: route.node_ids.len(),
+                distance: route.distance,
+                distance_bee_line: route.distance_bee_line(),
+            })?;
+
+            let dist = route.distance;
+            let dist_bl = route.distance_bee_line();
+            if dist_bl * 10.0 < dist && dist_bl > 105.0 {
+                route.write_to_geojson(format!("long_route_{}.geojson", i), &net)?;
+            }
         }
+
+        csv_writer.flush()?;
     } else if let Some(matches) = matches.subcommand_matches("filter-poi") {
         let input = matches.value_of("input").unwrap();
         let output = matches.value_of("output").unwrap();
